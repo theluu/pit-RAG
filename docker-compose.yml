@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: legal_rag
+      POSTGRES_USER: legal_rag
+      POSTGRES_PASSWORD: legal_rag
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legal_rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    environment:
+      DATABASE_URL: sqlite:////data/legal_rag.db
+      SECRET_KEY: ${SECRET_KEY:-development-only-secret-change-me-32}
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    volumes: ["api_data:/data"]
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  web:
+    build:
+      context: apps/web
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports: ["5173:80"]
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  postgres_data:
+  api_data:
