@@ -13,10 +13,21 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "PyJWT>=2.10,<3",
   "httpx>=0.28,<1",
+  "openai>=1.68,<3",
+  "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "argon2-cffi>=23.1,<26",
+  "alembic>=1.14,<2",
+  "redis>=5,<7",
+  "dramatiq[redis]>=1.17,<2",
+  "minio>=7.2,<8",
+  "PyMuPDF>=1.25,<2",
+  "clamd>=1.0,<2",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3,<9", "ruff>=0.9,<1"]
+ocr = ["pytesseract>=0.3.13,<1", "opencv-python-headless>=4.10,<5"]
 
 [tool.setuptools.packages.find]
 include = ["apps*", "packages*"]

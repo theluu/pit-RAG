@@ -23,6 +23,10 @@ SEED_DOCUMENTS = [
 1. Người lao động làm thêm giờ được trả lương tính theo đơn giá tiền lương hoặc tiền lương thực trả theo công việc đang làm.
 b) Vào ngày nghỉ hằng tuần, ít nhất bằng 200 phần trăm.
 c) Vào ngày nghỉ lễ, tết, ngày nghỉ có hưởng lương, ít nhất bằng 300 phần trăm chưa kể tiền lương ngày lễ, tết, ngày nghỉ có hưởng lương.
+CHƯƠNG VII THỜI GIỜ LÀM VIỆC, THỜI GIỜ NGHỈ NGƠI
+Điều 111. Nghỉ hằng tuần
+1. Mỗi tuần, người lao động được nghỉ ít nhất 24 giờ liên tục. Trong trường hợp đặc biệt do chu kỳ lao động không thể nghỉ hằng tuần thì người sử dụng lao động có trách nhiệm bảo đảm cho người lao động được nghỉ tính bình quân 01 tháng ít nhất 04 ngày.
+2. Người sử dụng lao động có quyền quyết định sắp xếp ngày nghỉ hằng tuần vào ngày Chủ nhật hoặc ngày xác định khác trong tuần nhưng phải ghi vào nội quy lao động.
 """,
     ),
     dict(
@@ -51,7 +55,7 @@ c) Vào ngày nghỉ lễ, tết, ngày nghỉ có hưởng lương, ít nhất 
         issued="2024-06-29",
         effective="2025-07-01",
         domain="social_insurance",
-        url="https://xaydungchinhsach.chinhphu.vn/luat-bao-hiem-xa-hoi-2024-119240719163304769.htm",
+        url="https://vanban.chinhphu.vn/?classid=1&docid=211199&orggroupid=1&pageid=27160",
         text="""CHƯƠNG V CHẾ ĐỘ HƯU TRÍ
 Điều 64. Đối tượng và điều kiện hưởng lương hưu
 1. Người lao động khi nghỉ việc có thời gian đóng bảo hiểm xã hội bắt buộc từ đủ 15 năm trở lên và đủ tuổi nghỉ hưu theo quy định thì được hưởng lương hưu.
