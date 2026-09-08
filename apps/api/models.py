@@ -34,6 +34,12 @@ class Provision(BaseModel):
     heading: str | None = None
     content: str
     normalized_content: str
+    page_from: int | None = None
+    page_to: int | None = None
+    extraction_method: Literal["native", "ocr", "mixed", "manual"] = "manual"
+    extraction_confidence: float | None = None
+    quality_flags: list[str] = Field(default_factory=list)
+    revision: int = 1
 
 
 class Citation(BaseModel):
@@ -55,6 +61,7 @@ class RetrievedProvision(BaseModel):
     keyword_score: float = 0
     fusion_score: float = 0
     rerank_score: float = 0
+    match_reasons: list[str] = Field(default_factory=list)
 
 
 class QueryRequest(BaseModel):
@@ -76,6 +83,12 @@ class QueryResponse(BaseModel):
     latency_ms: int
     estimated_cost: float = 0
     created_at: datetime
+    query_analysis: dict = Field(default_factory=dict)
+    diagnostics: dict = Field(default_factory=dict)
+    generation_mode: Literal["openai", "extractive_fallback", "abstained"] = "extractive_fallback"
+    fallback_reason: str | None = None
+    index_version: str = "legal-index-v1"
+    legal_timeline: list[dict] = Field(default_factory=list)
 
 
 class CompareRequest(BaseModel):
@@ -99,3 +112,30 @@ class LoginResponse(BaseModel):
 class FeedbackRequest(BaseModel):
     rating: Literal["correct", "incorrect", "missing_evidence"]
     comment: str | None = Field(default=None, max_length=1000)
+
+
+class DocumentIngestRequest(BaseModel):
+    document_number: str = Field(min_length=2, max_length=100)
+    title: str = Field(min_length=3, max_length=500)
+    document_type: str = Field(min_length=2, max_length=100)
+    issuing_authority: str = Field(min_length=2, max_length=200)
+    issued_date: date
+    effective_from: date
+    effective_to: date | None = None
+    domain: Domain
+    source_url: str | None = None
+    text: str = Field(min_length=20, max_length=2_000_000)
+    publish: bool = False
+
+
+class RelationRequest(BaseModel):
+    source_document_id: UUID
+    target_document_id: UUID
+    relation_type: Literal["replaces", "amends", "supplements", "guides"]
+    effective_from: date | None = None
+    evidence_text: str | None = Field(default=None, max_length=2000)
+
+
+class ProvisionEditRequest(BaseModel):
+    content: str = Field(min_length=5, max_length=200_000)
+    quality_flags: list[str] = Field(default_factory=list)

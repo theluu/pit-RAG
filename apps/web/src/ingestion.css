@@ -1,0 +1,26 @@
+.statusDot.processing { background: #4b82c3; }
+.statusDot.review_ready { background: #8b63bd; }
+.statusDot.failed { background: #bf554c; }
+.previewPanel { margin: 14px 0; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 17px; display: grid; gap: 8px; }
+.previewPanel > small { color: var(--muted); }
+.previewPanel > div { border-top: 1px solid #edf0ed; padding-top: 9px; }
+.previewPanel p { white-space: pre-wrap; max-height: 150px; overflow: auto; font: 11px/1.55 ui-monospace, monospace; }
+.tableRow > span:last-child { display: flex; gap: 5px; flex-wrap: wrap; }
+.jobTracker { margin: 14px 0; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 15px; display: grid; gap: 9px; }
+.jobTracker.failed { border-color: #e0b4ae; }
+.jobHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.jobHead strong { display: flex; align-items: center; gap: 7px; }
+.jobHead svg { width: 15px; height: 15px; }
+.jobHead small { color: var(--muted); }
+.jobBar { height: 6px; border-radius: 99px; background: #eef1ee; overflow: hidden; }
+.jobBar > i { display: block; height: 100%; background: #4b82c3; transition: width .4s ease; }
+.jobTracker.review_ready .jobBar > i { background: #4f9d69; }
+.jobTracker.failed .jobBar > i { background: #bf554c; }
+.jobError { color: #a2453d; font: 12px/1.5 ui-monospace, monospace; }
+.jobWarnings { margin: 0; padding-left: 17px; color: var(--muted); font-size: 12px; display: grid; gap: 3px; }
+.provenanceList { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; }
+.provenanceList li { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.provenanceList li > span:first-child { min-width: 88px; font-weight: 600; }
+.provenanceList li > span:nth-child(2) { color: var(--muted); }
+.flagChips { color: #a2453d; }
+.statusDot.failed { background: #bf554c; }
