@@ -534,3 +534,84 @@
 @media (max-width: 760px) {
   .metaActions { flex-direction: column; align-items: stretch; }
 }
+
+/* ---- extraction quality (admin preview) ---- */
+
+.quality {
+  border-top: 1px solid #edf0ed;
+  padding-top: 11px;
+}
+
+.quality > b {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.qualityTag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 11px;
+}
+
+.qualityTag.good { background: #e4f3e9; color: #226144; }
+.qualityTag.warn { background: #fdf1dd; color: #8a6212; }
+
+.qualityGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.qualityStat {
+  background: #f6f8f5;
+  border: 1px solid #e8ece8;
+  border-radius: 9px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.qualityStat span {
+  font-size: 9px;
+  color: #849089;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.qualityStat b {
+  font-size: 12px;
+  color: #24352d;
+  overflow-wrap: anywhere;
+}
+
+/* Only the rows that need attention carry colour, so a clean run reads as calm. */
+.qualityStat.bad {
+  background: #fdf3ee;
+  border-color: #efd8c9;
+}
+
+.qualityStat.bad b { color: #95503d; }
+
+.qualityNote {
+  display: block;
+  margin-top: 9px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+@media (max-width: 1000px) {
+  .qualityGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .qualityGrid { grid-template-columns: minmax(0, 1fr); }
+}
