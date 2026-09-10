@@ -604,6 +604,16 @@ def _enable_iterative_scan(connection) -> None:
         savepoint.rollback()
 
 
+# pgvector rejects hnsw.ef_search outside 1..1000 instead of clamping it, and the error
+# aborts the whole statement. L5-L7 over-fetch well past 1000, so the ceiling has to be
+# applied here rather than left to PostgreSQL.
+HNSW_EF_SEARCH_MAX = 1000
+
+
+def _ef_search(overfetch: int) -> int:
+    return min(max(settings.hnsw_ef_search, overfetch), HNSW_EF_SEARCH_MAX)
+
+
 # The approximate-nearest-neighbour arm, kept as a constant so tests can EXPLAIN exactly
 # what production runs. It touches only provision_index_entries with an equality filter:
 # joining index_versions here makes the plan fall back to a sequential scan plus sort.
@@ -672,7 +682,7 @@ def active_index_candidates(query: str, query_embedding: list[float], on: date,
         # HNSW recall is bounded by ef_search; the default (40) is below our over-fetch.
         # SET LOCAL only applies inside an explicit transaction block.
         connection.exec_driver_sql(
-            f"SET LOCAL hnsw.ef_search = {max(settings.hnsw_ef_search, overfetch)}")
+            f"SET LOCAL hnsw.ef_search = {_ef_search(overfetch)}")
         _enable_iterative_scan(connection)
         rows = connection.execute(sql, {"domain": domain, "temporal": temporal, "on_date": on,
             "vector": vector, "query": query, "limit": limit, "version": version_id,
