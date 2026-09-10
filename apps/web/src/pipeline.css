@@ -1,0 +1,508 @@
+/* Pipeline view: the retrieval path a question actually travels, drawn from the
+   execution_trace the API returns rather than from a hand-drawn diagram. */
+
+.pipeWrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ---- validation summary rail ---- */
+
+.pipeRail {
+  position: sticky;
+  top: 90px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 24px #173b2c0a;
+}
+
+.pipeRail h3 {
+  font-size: 12px;
+  margin: 0 0 3px;
+  letter-spacing: -0.01em;
+}
+
+.pipeRail > p {
+  font-size: 10px;
+  color: var(--muted);
+  margin: 0 0 13px;
+  line-height: 1.55;
+}
+
+.pipeMeter {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pipeMeter b {
+  font-size: 15px;
+  color: var(--green);
+  letter-spacing: 0;
+}
+
+.pipeBar {
+  height: 5px;
+  border-radius: 3px;
+  background: #e8ede9;
+  overflow: hidden;
+  margin: 7px 0 15px;
+}
+
+.pipeBar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #b59a77, #25705a);
+  transition: width 0.35s ease;
+}
+
+.pipeLegend {
+  border-top: 1px solid #edf0ed;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pipeLegend > div {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.pipeLegend em {
+  font-style: normal;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 3px;
+}
+
+.pipeLegend em.on { background: #35a36c; }
+.pipeLegend em.ran { background: #b59a77; }
+.pipeLegend em.skip { background: #cfd8d1; }
+
+/* ---- stage list ---- */
+
+.pipeStages {
+  display: flex;
+  flex-direction: column;
+}
+
+.pipeStage {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 24px #173b2c08;
+  transition: 0.2s;
+}
+
+/* The connector doubles as the "did data flow through here" signal. */
+.pipeLink {
+  width: 2px;
+  height: 16px;
+  margin-left: 27px;
+  background: #dbe2dc;
+  position: relative;
+}
+
+.pipeLink.flowed { background: #b59a77; }
+
+.pipeLink.flowed::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: -3px;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #b59a77;
+}
+
+.pipeStage[data-ran="1"] {
+  border-color: #c4d6c9;
+  box-shadow: 0 10px 30px #173b2c12;
+}
+
+.pipeStage[data-skipped="1"] {
+  opacity: 0.62;
+  background: #fafbf9;
+  box-shadow: none;
+}
+
+.pipeStage[data-valid="1"] {
+  border-left: 3px solid #35a36c;
+}
+
+.pipeHead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.pipeNum {
+  width: 25px;
+  height: 25px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #eef2ef;
+  color: #5d6f66;
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+
+.pipeStage[data-ran="1"] .pipeNum {
+  background: var(--green);
+  color: #fff;
+}
+
+.pipeName {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pipeName strong {
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+
+.pipeName span {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.pipeSignal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pipeCount {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #f0f4f1;
+  color: #4a625a;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pipeStage[data-ran="1"] .pipeCount {
+  background: #e1eee7;
+  color: #19523f;
+  font-weight: 700;
+}
+
+.pipeSkipTag {
+  font-size: 9px;
+  color: #96a09a;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+
+/* validation toggle */
+
+.pipeCheck {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 7px;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #b6c0b9;
+  flex: none;
+  padding: 0;
+}
+
+.pipeCheck svg { width: 14px; height: 14px; }
+.pipeCheck:hover { border-color: #9eb3a6; color: #6f8478; }
+
+.pipeCheck[data-on="1"] {
+  background: #e4f3e9;
+  border-color: #9dcfb2;
+  color: #226144;
+}
+
+/* stage detail */
+
+.pipeBody {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eff2ef;
+  display: grid;
+  gap: 10px;
+}
+
+.pipeFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pipeFacts span {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: #f6f8f5;
+  border: 1px solid #e8ece8;
+  color: #55665d;
+}
+
+.pipeFacts span b {
+  color: #1d4a3b;
+  font-variant-numeric: tabular-nums;
+}
+
+.pipeWhy {
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin: 0;
+}
+
+.pipeWhy b { color: #45564d; font-weight: 600; }
+
+.pipeTests {
+  font-size: 9px;
+  color: #96a09a;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pipeVariants {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pipeVariants code {
+  font-size: 10px;
+  background: #f6f8f5;
+  border: 1px solid #e8ece8;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: #45564d;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ---- score table: how a candidate's rank changes stage to stage ---- */
+
+.pipeTableWrap {
+  overflow-x: auto;
+  border: 1px solid #e8ece8;
+  border-radius: 9px;
+}
+
+.pipeTable {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.pipeTable th,
+.pipeTable td {
+  text-align: left;
+  padding: 7px 9px;
+  border-bottom: 1px solid #eff2ef;
+}
+
+.pipeTable thead th {
+  background: #f7f9f7;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #8b958f;
+  font-weight: 700;
+}
+
+.pipeTable tbody tr:last-child td { border-bottom: 0; }
+.pipeTable tbody tr.cited { background: #f3f9f5; }
+
+.pipeTable td.n {
+  font-variant-numeric: tabular-nums;
+  color: #55665d;
+}
+
+.pipeTable td.doc {
+  font-weight: 600;
+  color: #24352d;
+  white-space: nowrap;
+}
+
+.pipeTable td.doc small {
+  display: block;
+  font-weight: 400;
+  color: #8b958f;
+  white-space: normal;
+}
+
+.citedTag {
+  display: inline-block;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #e1eee7;
+  color: #19523f;
+  border-radius: 9px;
+  padding: 2px 6px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+/* ---- run bar ---- */
+
+.pipeRun {
+  background: #fff;
+  border: 1px solid #d6ded7;
+  border-radius: 13px;
+  padding: 14px 16px;
+  box-shadow: 0 12px 36px #173b2c0c;
+  margin-bottom: 18px;
+}
+
+.pipeRunTop {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pipeRunTop input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  font-size: 14px;
+  color: #25352e;
+  background: transparent;
+}
+
+.pipeRunMeta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0ed;
+}
+
+.pipeRunMeta label {
+  font-size: 9px;
+  color: #8a958e;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pipeRunMeta select {
+  display: block;
+  border: 0;
+  background: #fff;
+  color: #34473d;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 2px 0;
+  outline: none;
+}
+
+.pipeRunMeta > span:last-child { margin-left: auto; }
+
+.pipeAsk {
+  border: 0;
+  border-radius: 9px;
+  height: 38px;
+  padding: 0 15px;
+  background: var(--green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  box-shadow: 0 6px 15px #123f3325;
+}
+
+.pipeAsk:disabled { opacity: 0.5; }
+.pipeAsk svg { width: 15px; height: 15px; }
+
+.pipeChips {
+  display: flex;
+  gap: 6px;
+  margin-top: 11px;
+  overflow: auto;
+  align-items: center;
+}
+
+.pipeChips > span {
+  font-size: 9px;
+  color: #9aa49e;
+  white-space: nowrap;
+  letter-spacing: 0.08em;
+}
+
+.pipeChips button {
+  border: 1px solid #dce2dd;
+  background: #f8faf7;
+  border-radius: 20px;
+  padding: 6px 10px;
+  font-size: 10px;
+  color: #68766e;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pipeChips button:hover { border-color: #9eb3a6; color: #215441; }
+
+.pipeNote {
+  font-size: 10px;
+  color: #8a958e;
+  margin: 12px 2px 0;
+  line-height: 1.6;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.pipeNote svg { width: 12px; height: 12px; flex: none; margin-top: 2px; }
+
+.pipeError {
+  background: #fbeeea;
+  color: #95503d;
+  border-radius: 8px;
+  padding: 10px 13px;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1080px) {
+  .pipeWrap { grid-template-columns: minmax(0, 1fr); }
+  .pipeRail { position: static; order: -1; }
+}
+
+@media (max-width: 760px) {
+  .pipeHead { grid-template-columns: auto minmax(0, 1fr); }
+  .pipeSignal { grid-column: 2; justify-self: start; }
+  .pipeRunMeta > span:last-child { margin-left: 0; width: 100%; }
+  .pipeAsk { width: 100%; justify-content: center; }
+}
