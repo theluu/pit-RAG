@@ -121,9 +121,35 @@ def _printable_chars(text: str) -> int:
     return sum(char.isprintable() and not char.isspace() for char in text)
 
 
-def _needs_ocr(text: str) -> bool:
+def _image_coverage(page: fitz.Page) -> float:
+    """Fraction of the page covered by raster imagery, clamped to 1."""
+    page_area = abs(page.rect.get_area())
+    if not page_area:
+        return 0.0
+    covered = 0.0
+    for info in page.get_image_info():
+        bbox = fitz.Rect(info["bbox"]) & page.rect
+        if not bbox.is_empty:
+            covered += abs(bbox.get_area())
+    return min(covered / page_area, 1.0)
+
+
+def _needs_ocr(page: fitz.Page, text: str) -> bool:
     replacement_ratio = text.count("�") / max(1, len(text))
-    return _printable_chars(text) < settings.ocr_min_chars_per_page or replacement_ratio > 0.02
+    if replacement_ratio > 0.02:
+        return True
+    chars = _printable_chars(text)
+    if chars < settings.ocr_min_chars_per_page:
+        return True
+    # A scanned page can carry a thin native layer of its own. Every Vietnamese công
+    # báo PDF stamps page 1 with a digital signature — around 120 characters, well over
+    # the floor above — while the entire body of that page stays an unread image. The
+    # floor cannot tell that page from a real one, so a page covered by its own imagery
+    # is judged against the imagery instead.
+    return (
+        _image_coverage(page) >= settings.ocr_image_page_coverage
+        and chars < settings.ocr_min_chars_over_image
+    )
 
 
 @lru_cache(maxsize=1)
@@ -238,7 +264,7 @@ def _extract_page(page: fitz.Page, warnings: list[str]) -> ExtractedPage:
     native text is kept and the page is marked so review can catch it.
     """
     native = _native_page(page)
-    if not _needs_ocr(native.text):
+    if not _needs_ocr(page, native.text):
         return native
     try:
         scanned = _ocr_page(page)
