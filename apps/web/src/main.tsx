@@ -1316,7 +1316,7 @@ function deriveStages(result: Result | null): Record<string, StageView> {
 
 function PipelinePanel({ token }: { token: string }) {
   const [question, setQuestion] = useState(PIPE_EXAMPLES[0][2]),
-    [domain, setDomain] = useState(PIPE_EXAMPLES[0][0]),
+    [domain, setDomain] = useState(""),
     [date, setDate] = useState(PIPE_EXAMPLES[0][1]),
     [level, setLevel] = useState("L7"),
     [result, setResult] = useState<Result | null>(null),
@@ -1352,8 +1352,8 @@ function PipelinePanel({ token }: { token: string }) {
         body: JSON.stringify({
           question,
           applicable_date: date,
-          domain,
           pipeline_level: level,
+          ...(domain ? { domain } : {}),
         }),
       });
       if (!r.ok) throw new Error(`Truy vấn thất bại (HTTP ${r.status})`);
@@ -1400,6 +1400,7 @@ function PipelinePanel({ token }: { token: string }) {
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
             >
+              <option value="">Tất cả lĩnh vực</option>
               {domains.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -1445,11 +1446,10 @@ function PipelinePanel({ token }: { token: string }) {
         </div>
         <div className="pipeChips">
           <span>THỬ NGAY</span>
-          {PIPE_EXAMPLES.map(([dm, dt, q]) => (
+          {PIPE_EXAMPLES.map(([, dt, q]) => (
             <button
               key={q + dt}
               onClick={() => {
-                setDomain(dm);
                 setDate(dt);
                 setQuestion(q);
               }}
