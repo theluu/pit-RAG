@@ -1,5 +1,10 @@
 from apps.api.models import Citation, LegalDocument, RetrievedProvision
 
+# Below this rerank score the top passage is, in practice, a topical near-miss rather
+# than the provision that answers the question. Observed on the dev corpus: correct hits
+# land at 0.88-1.25, while an out-of-corpus question topped out at 0.54.
+WEAK_EVIDENCE_SCORE = 0.75
+
 
 def generate(
     question: str, results: list[RetrievedProvision], documents: dict, level: str,
@@ -63,26 +68,44 @@ def generate(
             + (f" điểm {p.point}" if p.point else "")
         )
         sentences.append(f"Theo {location} {d.document_number}: {p.content}")
+    warnings: list[str] = []
+    generation_mode = "extractive_fallback"
+    abstained = False
     try:
         from openai import OpenAIError
 
         from packages.generation.openai_gateway import grounded_answer, verify_citations
 
         llm_result = grounded_answer(question, selected) if use_provider else None
-        if llm_result and not llm_result["abstained"] and verify_citations(citations, results):
+        if llm_result and llm_result["abstained"]:
+            abstained = True
+        elif llm_result and not verify_citations(citations, results):
+            warnings = ["Câu trả lời của mô hình không khớp căn cứ; đang dùng trích xuất an toàn."]
+        elif llm_result:
             sentences = [llm_result["answer"]]
             generation_mode = "openai"
-        else:
-            generation_mode = "extractive_fallback"
     except (OpenAIError, ValueError, RuntimeError):
         # Provider outages must never remove the deterministic, cited fallback.
         warnings = ["Không gọi được mô hình sinh; đang dùng câu trả lời trích xuất an toàn."]
-        generation_mode = "extractive_fallback"
-    else:
-        warnings = []
+    if abstained:
+        # The model read this evidence and judged it insufficient. Printing the retrieved
+        # passages anyway turns a correct refusal into a confident off-topic answer, so
+        # the abstention has to reach the caller intact.
+        return (
+            "Chưa đủ căn cứ trong kho dữ liệu để trả lời câu hỏi này.",
+            [],
+            0.1,
+            ["Căn cứ truy hồi không trả lời được câu hỏi; hãy bổ sung văn bản hoặc thu hẹp câu hỏi."],
+            "abstained",
+        )
     # Confidence rewards a strong best passage and independent supporting evidence,
     # while remaining deliberately conservative for legal answers.
     best = max(c.score for c in citations)
     support = min(c.score for c in citations) if len(citations) > 1 else 0
     confidence = min(0.96, 0.36 + best * 0.52 + support * 0.12)
+    if best < WEAK_EVIDENCE_SCORE:
+        # The 0.36 floor let thin evidence report ~0.7, which reads as trustworthy.
+        # Capping and warning is cheap when wrong; staying silent is not.
+        confidence = min(confidence, 0.4)
+        warnings = [*warnings, "Căn cứ truy hồi yếu; hãy kiểm chứng trực tiếp văn bản gốc."]
     return "\n\n".join(sentences), citations, round(confidence, 2), warnings, generation_mode
