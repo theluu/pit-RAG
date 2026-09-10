@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     ingestion_eager: bool = False
     ocr_enabled: bool = True
     ocr_min_chars_per_page: int = 80
+    # A page whose imagery covers at least this much of it is treated as a scan, and
+    # then only a genuinely full native layer keeps it out of OCR. Together these stop
+    # a digital-signature stamp from passing a scanned page off as born-digital text.
+    ocr_image_page_coverage: float = 0.5
+    ocr_min_chars_over_image: int = 600
     ocr_dpi: int = 300
     ocr_language: str = "vie"
     ocr_min_confidence: float = 0.8
