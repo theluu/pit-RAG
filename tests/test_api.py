@@ -74,6 +74,7 @@ def test_query_exposes_auditable_legal_signals():
     assert {"overtime", "weekly_rest"} <= set(body["query_analysis"]["concepts"])
     assert body["diagnostics"]["effective_date_checked"] is True
     assert body["diagnostics"]["evidence_count"] > 0
+    assert body["diagnostics"]["graph_path"] in {"neo4j", "sql_fallback"}
     assert any(x["match_reasons"] for x in body["retrieved_provisions"])
 
 
@@ -128,3 +129,5 @@ def test_operational_readiness_and_admin_summary():
     assert summary.status_code == 200
     assert summary.json()["published_index_documents"] >= 5
     assert "provider" in summary.json()["capabilities"]
+    graph = summary.json()["capabilities"]["neo4j"]
+    assert {"enabled", "available", "nodes", "relationships"} <= set(graph)

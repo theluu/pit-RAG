@@ -22,10 +22,18 @@ def benchmark(cases: list[dict], execute, pipeline: str = "L7") -> dict:
         expected = set(case.get("expected_document_numbers", []))
         cited = {citation.document_number for citation in response.citations}
         intersection = expected & cited
+        ranked_documents = response.diagnostics.get("retrieved_document_numbers", [])
+        if not ranked_documents:
+            ranked_documents = [citation.document_number for citation in response.citations]
+        first_relevant = next(
+            (rank for rank, number in enumerate(ranked_documents, 1) if number in expected), None
+        )
         rows.append({
             "id": case["id"],
             "citation_precision": len(intersection) / len(cited) if cited else float(not expected),
             "citation_recall": len(intersection) / len(expected) if expected else float(not cited),
+            "retrieval_hit": bool(expected & set(ranked_documents)),
+            "reciprocal_rank": 1 / first_relevant if first_relevant else 0,
             "abstained": not response.citations,
             "latency_ms": round((time.perf_counter() - started) * 1000, 2),
         })
@@ -36,6 +44,9 @@ def benchmark(cases: list[dict], execute, pipeline: str = "L7") -> dict:
         "cases": len(rows),
         "citation_precision": round(statistics.mean(r["citation_precision"] for r in rows), 4),
         "citation_recall": round(statistics.mean(r["citation_recall"] for r in rows), 4),
+        "retrieval_hit_rate": round(statistics.mean(r["retrieval_hit"] for r in rows), 4),
+        "mean_reciprocal_rank": round(statistics.mean(r["reciprocal_rank"] for r in rows), 4),
+        "abstention_rate": round(statistics.mean(r["abstained"] for r in rows), 4),
         "latency_p50_ms": round(statistics.median(latencies), 2),
         "latency_p95_ms": latencies[p95_index],
         "results": rows,

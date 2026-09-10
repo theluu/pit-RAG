@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 60
     database_url: str = "sqlite:///./legal_rag.db"
     redis_url: str = "redis://localhost:6379/0"
+    neo4j_enabled: bool = False
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "legal_graph_password"
+    neo4j_database: str = "neo4j"
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"

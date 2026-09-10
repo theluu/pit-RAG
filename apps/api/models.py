@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 Domain = Literal["labor", "social_insurance", "personal_income_tax"]
-Pipeline = Literal["L0", "L1", "L2", "L3", "L4", "L7"]
+Pipeline = Literal["L0", "L1", "L2", "L3", "L4", "L5", "L6", "L7"]
 
 
 class LegalDocument(BaseModel):

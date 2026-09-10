@@ -1,0 +1,24 @@
+.version {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.version svg,
+.graphBadge svg {
+  width: 13px;
+  height: 13px;
+}
+
+.graphBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid #d7e5dd;
+  border-radius: 12px;
+  background: #edf6f1;
+  color: #28654e;
+  font-size: 9px;
+  font-weight: 700;
+}

@@ -40,6 +40,7 @@ from apps.api.database import (
     save_relation,
     save_run,
 )
+from apps.api.graph import graph_relations, graph_status, sync_graph
 from apps.api.models import (
     CompareRequest,
     DocumentIngestRequest,
@@ -62,6 +63,7 @@ from packages.ingestion.pdf_pipeline import PDFValidationError, validate_pdf
 from packages.ingestion.security import scan_upload
 from packages.ingestion.storage import put_pdf, storage_ready
 from packages.retrieval.engine import Retriever, analyze_query
+from packages.retrieval.orchestrator import retrieve
 
 app = FastAPI(
     title="Vietnam Legal RAG API",
@@ -80,6 +82,7 @@ init_database(SEED_DOCUMENTS, SEED_PROVISIONS)
 DOCUMENTS, PROVISIONS = load_published_corpus()
 DOC_MAP = {d.id: d for d in DOCUMENTS}
 RETRIEVER = Retriever(DOCUMENTS, PROVISIONS)
+sync_graph(DOCUMENTS, PROVISIONS, list_relations())
 RUNS: dict[UUID, QueryResponse] = {}
 FEEDBACK: dict[UUID, list[dict]] = defaultdict(list)
 REQUESTS: dict[str, deque] = defaultdict(deque)
@@ -153,6 +156,7 @@ def readiness():
         "index": index,
         "active_index": active_index_name(),
         "provider": provider_status(),
+        "neo4j": graph_status(),
     }
 
 
@@ -162,6 +166,7 @@ def capabilities(_: dict = Depends(current_user)):
         "provider": provider_status(),
         "database": database_ready(),
         "redis": redis_ready(),
+        "neo4j": graph_status(),
         "index_version": active_index_name() or "legacy-in-memory",
         "retrieval_modes": ["lexical", "hybrid_rrf", "temporal"],
         "ingestion": ["text", "html", "pdf_text"],
@@ -357,6 +362,10 @@ def reload_corpus() -> None:
     RETRIEVER = Retriever(DOCUMENTS, PROVISIONS)
 
 
+def refresh_graph() -> bool:
+    return sync_graph(DOCUMENTS, PROVISIONS, list_relations())
+
+
 @app.get("/api/v1/admin/summary")
 def administration_summary(user: dict = Depends(current_user)):
     require_role(user, "admin", "curator", "evaluator")
@@ -366,6 +375,7 @@ def administration_summary(user: dict = Depends(current_user)):
             "provider": provider_status(),
             "database": database_ready(),
             "redis": redis_ready(),
+            "neo4j": graph_status(),
         },
         "published_index_documents": len(DOCUMENTS),
     }
@@ -392,6 +402,7 @@ def publish(document_id: UUID, user: dict = Depends(current_user)):
         raise HTTPException(500, "Index activation failed")
     audit(user["sub"], "document.publish", str(document_id))
     reload_corpus()
+    graph_synced = refresh_graph()
     return {
         "status": "published",
         "document_id": document_id,
@@ -399,6 +410,7 @@ def publish(document_id: UUID, user: dict = Depends(current_user)):
         "index_provisions": len(PROVISIONS),
         "index_version": active_index_name() or "legacy-in-memory",
         "index_rebuilt": version_id is not None,
+        "graph_synced": graph_synced,
     }
 
 
@@ -452,18 +464,17 @@ def create_relation(body: RelationRequest, user: dict = Depends(current_user)):
         body.evidence_text,
     )
     audit(user["sub"], "relation.create", str(relation_id), relation_type=body.relation_type)
-    return {"id": relation_id, **body.model_dump(mode="json")}
+    graph_synced = refresh_graph()
+    return {"id": relation_id, **body.model_dump(mode="json"), "graph_synced": graph_synced}
 
 
 def execute(body: QueryRequest, user_id: str = "system", use_provider: bool = True) -> QueryResponse:
     started = time.perf_counter()
-    results = (
-        []
-        if body.pipeline_level == "L0"
-        else RETRIEVER.search(
-            body.question, body.applicable_date, body.domain, body.pipeline_level, body.top_k
-        )
+    retrieval = retrieve(
+        RETRIEVER, body.question, body.applicable_date, body.domain,
+        body.pipeline_level, body.top_k,
     )
+    results = retrieval.results
     answer, citations, confidence, warnings, generation_mode = generate(
         body.question, results, DOC_MAP, body.pipeline_level, use_provider=use_provider
     )
@@ -483,9 +494,13 @@ def execute(body: QueryRequest, user_id: str = "system", use_provider: bool = Tr
                 + ", ".join(d.document_number for d in excluded)
             )
     cited_document_ids = {str(c.document_id) for c in citations}
-    timeline = [relation for relation in list_relations()
-                if relation["source_document_id"] in cited_document_ids
-                or relation["target_document_id"] in cited_document_ids]
+    graph_timeline = (graph_relations(cited_document_ids)
+                      if body.pipeline_level in {"L5", "L7"} else None)
+    timeline = graph_timeline if graph_timeline is not None else [
+        relation for relation in list_relations()
+        if relation["source_document_id"] in cited_document_ids
+        or relation["target_document_id"] in cited_document_ids
+    ]
     response = QueryResponse(
         run_id=uuid4(),
         answer=answer,
@@ -502,12 +517,20 @@ def execute(body: QueryRequest, user_id: str = "system", use_provider: bool = Tr
         diagnostics={
             "candidate_count": len(results),
             "evidence_count": len(citations),
+            "retrieved_document_numbers": [
+                DOC_MAP[item.provision.document_id].document_number for item in results
+            ],
             "effective_date_checked": body.pipeline_level in {"L2", "L3", "L4", "L7"},
             "abstained": not citations,
             "top_score": round(max((c.score for c in citations), default=0), 4),
             "generation_mode": generation_mode,
+            "retrieval_strategy": retrieval.strategy,
+            "query_variants": retrieval.query_variants,
+            "execution_trace": retrieval.trace,
             "retrieval_path": ("lexical_fallback" if RETRIEVER.index_degraded
                                else ("pgvector_hybrid" if active_index_name() else "lexical")),
+            "graph_path": ("neo4j" if graph_timeline is not None else "sql_fallback")
+            if body.pipeline_level in {"L5", "L7"} else "not_used",
         },
         generation_mode=generation_mode,
         fallback_reason=(warnings[0] if generation_mode == "extractive_fallback" and warnings
@@ -562,7 +585,7 @@ def feedback(run_id: UUID, body: FeedbackRequest, user: dict = Depends(current_u
 @app.post("/api/v1/admin/evaluations/{pipeline}")
 def evaluate_pipeline(pipeline: str, user: dict = Depends(current_user)):
     require_role(user, "admin", "evaluator")
-    if pipeline not in {"L0", "L1", "L2", "L3", "L4", "L7"}:
+    if pipeline not in {"L0", "L1", "L2", "L3", "L4", "L5", "L6", "L7"}:
         raise HTTPException(422, "Unknown pipeline")
     report = benchmark(
         load_cases("data/evaluation/sample.jsonl"),

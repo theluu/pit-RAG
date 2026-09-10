@@ -19,6 +19,7 @@ dependencies = [
   "argon2-cffi>=23.1,<26",
   "alembic>=1.14,<2",
   "redis>=5,<7",
+  "neo4j>=5.27,<7",
   "dramatiq[redis]>=1.17,<2",
   "minio>=7.2,<8",
   "PyMuPDF>=1.25,<2",
