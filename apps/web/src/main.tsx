@@ -971,17 +971,29 @@ function IngestForm({
       domain: "labor",
     }).forEach(([k, v]) => form.append(k, v));
     form.append("file", pdf);
-    const r = await fetch(`${API}/api/v1/admin/documents/uploads`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    });
-    const body = await r.json();
+    let r: Response;
+    try {
+      r = await fetch(`${API}/api/v1/admin/documents/uploads`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+    } catch {
+      setBusy(false);
+      onDone("Không gọi được API. Kiểm tra kết nối mạng.", null);
+      return;
+    }
+    // A 500 answers in plain text, so parsing before checking the status threw a
+    // SyntaxError that nothing caught — the spinner then span forever.
+    const body = await r
+      .clone()
+      .json()
+      .catch(() => ({}) as Record<string, string>);
     setBusy(false);
     onDone(
       r.ok
-        ? `Đã xếp hàng OCR · job ${body.job_id.slice(0, 8)}`
-        : body.detail || "Upload thất bại",
+        ? `Đã xếp hàng OCR · job ${String(body.job_id ?? "").slice(0, 8)}`
+        : body.detail || `Upload thất bại (HTTP ${r.status})`,
       r.ok
         ? {
             id: body.job_id,
