@@ -157,6 +157,9 @@ type EvalReport = {
     latency_ms: number;
   }[];
 };
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 const domains = [
   ["labor", "Lao động"],
   ["social_insurance", "Bảo hiểm xã hội"],
@@ -187,7 +190,7 @@ function App() {
     [view, setView] = useState<View>("query"),
     [question, setQuestion] = useState(examples[0][1]),
     [domain, setDomain] = useState("labor"),
-    [date, setDate] = useState("2026-01-01"),
+    [date, setDate] = useState(today),
     [level, setLevel] = useState("L7");
   const [result, setResult] = useState<Result | null>(null),
     [compare, setCompare] = useState<Record<string, Result> | null>(null),
@@ -954,6 +957,11 @@ function IngestForm({
 }) {
   const [number, setNumber] = useState("DEMO/2026/01"),
     [title, setTitle] = useState("Văn bản PDF cần kiểm duyệt"),
+    [docType, setDocType] = useState("Luật"),
+    [authority, setAuthority] = useState("Quốc hội"),
+    [issued, setIssued] = useState(today),
+    [effective, setEffective] = useState(today),
+    [uploadDomain, setUploadDomain] = useState("labor"),
     [pdf, setPdf] = useState<File | null>(null),
     [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent) {
@@ -964,11 +972,11 @@ function IngestForm({
     Object.entries({
       document_number: number,
       title,
-      document_type: "Nghị quyết",
-      issuing_authority: "Cơ quan demo",
-      issued_date: "2026-01-01",
-      effective_from: "2026-02-01",
-      domain: "labor",
+      document_type: docType,
+      issuing_authority: authority,
+      issued_date: issued,
+      effective_from: effective,
+      domain: uploadDomain,
     }).forEach(([k, v]) => form.append(k, v));
     form.append("file", pdf);
     let r: Response;
@@ -1018,6 +1026,46 @@ function IngestForm({
       <label>
         Tiêu đề
         <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      <label>
+        Loại văn bản
+        <input value={docType} onChange={(e) => setDocType(e.target.value)} />
+      </label>
+      <label>
+        Cơ quan ban hành
+        <input
+          value={authority}
+          onChange={(e) => setAuthority(e.target.value)}
+        />
+      </label>
+      <label>
+        Ngày ban hành
+        <input
+          type="date"
+          value={issued}
+          onChange={(e) => setIssued(e.target.value)}
+        />
+      </label>
+      <label>
+        Ngày có hiệu lực
+        <input
+          type="date"
+          value={effective}
+          onChange={(e) => setEffective(e.target.value)}
+        />
+      </label>
+      <label>
+        Lĩnh vực
+        <select
+          value={uploadDomain}
+          onChange={(e) => setUploadDomain(e.target.value)}
+        >
+          {domains.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
       </label>
       <label>
         PDF
@@ -1240,10 +1288,10 @@ const STAGES: {
 ];
 
 const PIPE_EXAMPLES: [string, string, string][] = [
-  ["social_insurance", "2026-01-01", "Điều kiện hưởng lương hưu là gì?"],
+  ["social_insurance", "", "Điều kiện hưởng lương hưu là gì?"],
   ["social_insurance", "2020-01-01", "Điều kiện hưởng lương hưu là gì?"],
-  ["labor", "2026-01-01", "Thời gian thử việc tối đa là bao lâu?"],
-  ["labor", "2026-01-01", "Thủ tục đăng ký kết hôn như thế nào?"],
+  ["labor", "", "Quyền và nghĩa vụ về an toàn, vệ sinh lao động của người lao động là gì?"],
+  ["labor", "", "Thủ tục đăng ký kết hôn như thế nào?"],
 ];
 
 function readValidated(): Record<string, boolean> {
@@ -1329,7 +1377,7 @@ function deriveStages(result: Result | null): Record<string, StageView> {
 function PipelinePanel({ token }: { token: string }) {
   const [question, setQuestion] = useState(PIPE_EXAMPLES[0][2]),
     [domain, setDomain] = useState(""),
-    [date, setDate] = useState(PIPE_EXAMPLES[0][1]),
+    [date, setDate] = useState(today),
     [level, setLevel] = useState("L7"),
     [result, setResult] = useState<Result | null>(null),
     [loading, setLoading] = useState(false),
@@ -1441,7 +1489,7 @@ function PipelinePanel({ token }: { token: string }) {
               value={date}
               onChange={(e) => setDate(e.target.value)}
             >
-              <option value="2026-01-01">2026-01-01 (hôm nay)</option>
+              <option value={today()}>{today()} (hôm nay)</option>
               <option value="2020-01-01">2020-01-01 (quá khứ)</option>
             </select>
           </span>
@@ -1462,7 +1510,7 @@ function PipelinePanel({ token }: { token: string }) {
             <button
               key={q + dt}
               onClick={() => {
-                setDate(dt);
+                setDate(dt || today());
                 setQuestion(q);
               }}
             >
