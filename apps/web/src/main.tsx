@@ -27,7 +27,9 @@ import "./styles.css";
 import "./ingestion.css";
 import "./graph.css";
 
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+// Default to same-origin relative paths: a production build served behind the app's
+// own reverse proxy must not carry a hardcoded host. Dev sets this in .env.development.
+const API = import.meta.env.VITE_API_URL ?? "";
 type View = "query" | "admin" | "evaluation";
 type Citation = {
   document_number: string;
