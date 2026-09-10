@@ -134,6 +134,7 @@ type Preview = {
     id: string;
     article: string;
     clause?: string;
+    point?: string;
     content: string;
     quality_flags: string[];
     page_from?: number;
@@ -831,6 +832,7 @@ function AdminPanel({ token }: { token: string }) {
           <small>
             {preview.pages.length} trang · {preview.provisions.length} chunks
           </small>
+          <ExtractionQuality preview={preview} />
           {preview.pages.slice(0, 3).map((p) => (
             <div key={p.page_number}>
               <b>
@@ -1855,5 +1857,143 @@ function MetadataForm({
         </button>
       </div>
     </form>
+  );
+}
+
+
+// Extraction quality, computed from the preview payload the API already returns.
+// The numbers that matter after an OCR run are not "how many chunks" but whether the
+// article sequence has holes and whether any two chunks carry the same citation label:
+// a gap means content was lost, a repeated label means a citation points at two places.
+function ExtractionQuality({ preview }: { preview: Preview }) {
+  const numbers = preview.provisions
+    .map((p) => Number(p.article))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  const unique = Array.from(new Set(numbers)).sort((a, b) => a - b);
+  const gaps: number[] = [];
+  if (unique.length) {
+    for (let n = unique[0]; n <= unique[unique.length - 1]; n++) {
+      if (!unique.includes(n)) gaps.push(n);
+    }
+  }
+  const nonNumeric = Array.from(
+    new Set(
+      preview.provisions
+        .map((p) => p.article)
+        .filter((a) => !Number.isInteger(Number(a))),
+    ),
+  );
+
+  const seen = new Map<string, number>();
+  preview.provisions.forEach((p) => {
+    const key = `${p.article}.${p.clause ?? ""}.${p.point ?? ""}`;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  });
+  const duplicated = Array.from(seen.values()).filter((n) => n > 1).length;
+
+  const byMethod = new Map<string, number>();
+  preview.pages.forEach((pg) => {
+    byMethod.set(
+      pg.extraction_method,
+      (byMethod.get(pg.extraction_method) ?? 0) + 1,
+    );
+  });
+  const confidences = preview.pages
+    .map((pg) => pg.confidence)
+    .filter((c): c is number => c != null);
+  const lowest = confidences.length ? Math.min(...confidences) : null;
+  const thin = preview.pages.filter(
+    (pg) => pg.extraction_method !== "ocr" && pg.text.length < 400,
+  );
+  const flagged = preview.provisions.filter(
+    (pr) => pr.quality_flags.length > 0,
+  ).length;
+
+  const ok = !gaps.length && !nonNumeric.length && !duplicated && !thin.length;
+
+  return (
+    <div className="quality">
+      <b>
+        Chất lượng bóc tách
+        <span className={`qualityTag ${ok ? "good" : "warn"}`}>
+          {ok ? "không phát hiện vấn đề" : "có điểm cần xem"}
+        </span>
+      </b>
+      <div className="qualityGrid">
+        <QualityStat
+          label="Điều liên tục"
+          value={
+            unique.length
+              ? `${unique.length} · Điều ${unique[0]}–${unique[unique.length - 1]}`
+              : "—"
+          }
+          bad={false}
+        />
+        <QualityStat
+          label="Điều bị thiếu"
+          value={gaps.length ? gaps.join(", ") : "không"}
+          bad={gaps.length > 0}
+        />
+        <QualityStat
+          label="Nhãn trích dẫn trùng"
+          value={duplicated ? `${duplicated} nhóm` : "không"}
+          bad={duplicated > 0}
+        />
+        <QualityStat
+          label="Số điều đọc sai"
+          value={nonNumeric.length ? nonNumeric.join(", ") : "không"}
+          bad={nonNumeric.length > 0}
+        />
+        <QualityStat
+          label="Trang theo cách bóc"
+          value={Array.from(byMethod)
+            .map(([m, n]) => `${n} ${m}`)
+            .join(" · ")}
+          bad={false}
+        />
+        <QualityStat
+          label="Trang text mỏng, chưa OCR"
+          value={
+            thin.length
+              ? thin.map((pg) => `trang ${pg.page_number}`).join(", ")
+              : "không"
+          }
+          bad={thin.length > 0}
+        />
+        <QualityStat
+          label="Confidence OCR thấp nhất"
+          value={lowest == null ? "—" : `${(lowest * 100).toFixed(1)}%`}
+          bad={lowest != null && lowest < 0.8}
+        />
+        <QualityStat
+          label="Điều khoản có cảnh báo"
+          value={flagged ? `${flagged}` : "không"}
+          bad={false}
+        />
+      </div>
+      <small className="qualityNote">
+        Điều bị thiếu nghĩa là nội dung không vào được kho. Nhãn trùng nghĩa là
+        hai đoạn cùng một số trích dẫn — người đọc không lần ngược được về đúng
+        chỗ. Trang text mỏng mà chưa OCR thường là trang scan chỉ có con dấu chữ
+        ký số.
+      </small>
+    </div>
+  );
+}
+
+function QualityStat({
+  label,
+  value,
+  bad,
+}: {
+  label: string;
+  value: string;
+  bad: boolean;
+}) {
+  return (
+    <div className={`qualityStat ${bad ? "bad" : ""}`}>
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
   );
 }
