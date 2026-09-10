@@ -26,12 +26,14 @@ import {
 import "./styles.css";
 import "./ingestion.css";
 import "./graph.css";
+import "./pipeline.css";
 
 // Default to same-origin relative paths: a production build served behind the app's
 // own reverse proxy must not carry a hardcoded host. Dev sets this in .env.development.
 const API = import.meta.env.VITE_API_URL ?? "";
-type View = "query" | "admin" | "evaluation";
+type View = "query" | "pipeline" | "admin" | "evaluation";
 type Citation = {
+  provision_id: string;
   document_number: string;
   title: string;
   article: string;
@@ -361,6 +363,7 @@ function App() {
               )}
             </>
           )}
+          {view === "pipeline" && <PipelinePanel token={token} />}{" "}
           {view === "admin" && <AdminPanel token={token} />}{" "}
           {view === "evaluation" && <EvaluationPanel token={token} />}
         </section>
@@ -384,6 +387,7 @@ function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
         {(
           [
             ["query", "Tra cứu"],
+            ["pipeline", "Pipeline"],
             ["admin", "Dữ liệu"],
             ["evaluation", "Đánh giá"],
           ] as [View, string][]
@@ -420,6 +424,13 @@ function Sidebar({
         >
           <Search />
           <span>Tra cứu pháp luật</span>
+        </button>
+        <button
+          className={`nav ${view === "pipeline" ? "active" : ""}`}
+          onClick={() => setView("pipeline")}
+        >
+          <Activity />
+          <span>Pipeline truy vấn</span>
         </button>
         <button
           className={`nav ${view === "admin" ? "active" : ""}`}
@@ -1125,3 +1136,508 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>,
 );
+
+// ---------------------------------------------------------------------------
+// Pipeline view
+//
+// Two signals sit on every stage. The amber "flowed" state is read back from the
+// execution_trace the API returns for a real query, so the counts are measured
+// rather than illustrated; the green tick is the operator's own record that the
+// stage has been verified against the runbook. A stage the chosen level never
+// reaches is drawn dimmed rather than hidden — the gap between levels is the
+// point of the view.
+// ---------------------------------------------------------------------------
+
+type Trace = { stage: string; count?: number; path?: string; enabled?: boolean };
+type StageView = {
+  ran: boolean;
+  count?: number;
+  facts: [string, string][];
+};
+
+const STAGES: {
+  key: string;
+  name: string;
+  sub: string;
+  why: string;
+  tests: string;
+}[] = [
+  {
+    key: "input",
+    name: "Câu hỏi và bối cảnh",
+    sub: "Người dùng nhập câu hỏi, chọn lĩnh vực và thời điểm áp dụng",
+    why: "Thời điểm áp dụng là tham số quyết định, không phải tuỳ chọn. Cùng một câu hỏi hỏi cho năm 2020 và cho hôm nay phải ra hai văn bản khác nhau.",
+    tests: "A1 · D1",
+  },
+  {
+    key: "analysis",
+    name: "Phân tích ý định",
+    sub: "Nhận diện khái niệm pháp lý và đơn vị đo trong câu hỏi",
+    why: "Nhận ra câu hỏi đang hỏi số giờ hay hỏi phần trăm tiền lương. Thiếu bước này thì điều khoản trùng từ nhưng khác đơn vị sẽ chen lên đầu.",
+    tests: "C4",
+  },
+  {
+    key: "expansion",
+    name: "Mở rộng truy vấn",
+    sub: "Sinh biến thể tiếng Việt bằng luật xác định, không nhờ mô hình",
+    why: "Người dùng viết nghỉ hưu, văn bản viết hưởng lương hưu. Biến thể sinh bằng luật nên tái lập được và kiểm toán được — điều kiện bắt buộc với hệ pháp lý.",
+    tests: "B6",
+  },
+  {
+    key: "retrieval",
+    name: "Truy hồi lai",
+    sub: "pgvector ANN và full-text PostgreSQL, hợp nhất bằng RRF",
+    why: "Vector bắt được ý nghĩa nhưng bỏ sót thuật ngữ chính xác; full-text thì ngược lại. Hợp nhất hai nhánh để không mất kiểu nào.",
+    tests: "B1 · B3 · G3",
+  },
+  {
+    key: "temporal",
+    name: "Chốt hiệu lực",
+    sub: "Loại văn bản chưa có hoặc đã hết hiệu lực tại thời điểm hỏi",
+    why: "Embedding không biết khái niệm hiệu lực: Luật BHXH 2014 và 2024 nằm sát nhau trong không gian vector. Chỉ bộ lọc metadata mới tách được.",
+    tests: "B2 · D1 · D2",
+  },
+  {
+    key: "graph",
+    name: "Mở rộng đồ thị",
+    sub: "Duyệt quan hệ thay thế, sửa đổi, bổ sung, hướng dẫn trong Neo4j",
+    why: "SQL vẫn là nguồn sự thật; Neo4j chỉ là hình chiếu. Đồ thị chết thì truy vấn vẫn chạy, chỉ mất phần mở rộng quan hệ.",
+    tests: "E1 · E3 · E4",
+  },
+  {
+    key: "rerank",
+    name: "Rerank pháp lý",
+    sub: "Chấm lại theo khái niệm, tham chiếu chéo và đơn vị đo",
+    why: "Bước đóng góp nhiều nhất. Nó dọn đúng thứ mà truy hồi lai kéo nhầm về, nên L4 mới là mức mặc định chứ không phải L3.",
+    tests: "B3 · B4 · H1",
+  },
+  {
+    key: "generation",
+    name: "Sinh câu trả lời có kiểm chứng",
+    sub: "Mô hình viết câu trả lời, hệ đối chiếu lại từng trích dẫn",
+    why: "Trích dẫn của mô hình được kiểm lại với tập căn cứ thật. Không khớp thì lùi về trích nguyên văn điều khoản; mô hình báo không đủ căn cứ thì từ chối hẳn.",
+    tests: "C1 · C2 · C3",
+  },
+  {
+    key: "answer",
+    name: "Trả lời kèm căn cứ",
+    sub: "Câu trả lời, trích dẫn tới cấp điểm, độ tin cậy và cảnh báo",
+    why: "Đơn vị trích dẫn nhỏ nhất là điều khoản chứ không phải trang, nên người đọc kiểm chứng được tới đúng Điều, khoản, điểm.",
+    tests: "C2 · I3",
+  },
+];
+
+const PIPE_EXAMPLES: [string, string, string][] = [
+  ["social_insurance", "2026-01-01", "Điều kiện hưởng lương hưu là gì?"],
+  ["social_insurance", "2020-01-01", "Điều kiện hưởng lương hưu là gì?"],
+  ["labor", "2026-01-01", "Thời gian thử việc tối đa là bao lâu?"],
+  ["labor", "2026-01-01", "Thủ tục đăng ký kết hôn như thế nào?"],
+];
+
+function readValidated(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem("pitrag-pipeline-validated") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function deriveStages(result: Result | null): Record<string, StageView> {
+  const out: Record<string, StageView> = {};
+  for (const s of STAGES) out[s.key] = { ran: false, facts: [] };
+  if (!result) return out;
+
+  const d = result.diagnostics || {};
+  const trace = (d.execution_trace as Trace[]) || [];
+  const at = (name: string) => trace.find((t) => t.stage === name);
+
+  out.input = {
+    ran: true,
+    facts: [["pipeline", result.pipeline_version]],
+  };
+  const concepts = result.query_analysis?.concepts || [];
+  out.analysis = {
+    ran: concepts.length > 0,
+    count: concepts.length,
+    facts: concepts.map((c) => ["khái niệm", c] as [string, string]),
+  };
+
+  const exp = at("query_expansion");
+  const variants = (d.query_variants as string[]) || [];
+  out.expansion = {
+    ran: Boolean(exp),
+    count: exp?.count ?? variants.length,
+    facts: [],
+  };
+
+  const hyb = at("hybrid_retrieval");
+  out.retrieval = {
+    ran: Boolean(hyb) || result.retrieved_provisions.length > 0,
+    count: hyb?.count ?? result.retrieved_provisions.length,
+    facts: [["đường truy hồi", String(d.retrieval_path ?? "—")]],
+  };
+
+  const tg = at("temporal_guard");
+  out.temporal = {
+    ran: Boolean(tg?.enabled) || d.effective_date_checked === true,
+    facts: [],
+  };
+
+  const gr = at("graph_expansion");
+  out.graph = {
+    ran: Boolean(gr),
+    count: gr?.count,
+    facts: gr?.path ? [["đường đồ thị", gr.path]] : [],
+  };
+
+  const reranked = result.retrieved_provisions.filter((r) => r.rerank_score > 0);
+  out.rerank = {
+    ran: reranked.length > 0,
+    count: (d.candidate_count as number) ?? reranked.length,
+    facts: [["điểm cao nhất", String(d.top_score ?? "—")]],
+  };
+
+  out.generation = {
+    ran: true,
+    count: d.evidence_count as number | undefined,
+    facts: [
+      ["chế độ", result.generation_mode],
+      ["độ tin cậy", result.confidence.toFixed(2)],
+    ],
+  };
+
+  out.answer = {
+    ran: result.citations.length > 0,
+    count: result.citations.length,
+    facts: [["độ trễ", `${Math.round(result.latency_ms)} ms`]],
+  };
+  return out;
+}
+
+function PipelinePanel({ token }: { token: string }) {
+  const [question, setQuestion] = useState(PIPE_EXAMPLES[0][2]),
+    [domain, setDomain] = useState(PIPE_EXAMPLES[0][0]),
+    [date, setDate] = useState(PIPE_EXAMPLES[0][1]),
+    [level, setLevel] = useState("L7"),
+    [result, setResult] = useState<Result | null>(null),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState(""),
+    [valid, setValid] = useState<Record<string, boolean>>(readValidated);
+
+  function toggle(key: string) {
+    setValid((prev) => {
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      try {
+        localStorage.setItem("pitrag-pipeline-validated", JSON.stringify(next));
+      } catch {
+        /* private browsing: the tick just doesn't persist */
+      }
+      return next;
+    });
+  }
+
+  async function run() {
+    setLoading(true);
+    setError("");
+    setResult(null);
+    try {
+      const r = await fetch(`${API}/api/v1/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          question,
+          applicable_date: date,
+          domain,
+          pipeline_level: level,
+        }),
+      });
+      if (!r.ok) throw new Error(`Truy vấn thất bại (HTTP ${r.status})`);
+      setResult(await r.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const stages = deriveStages(result);
+  const validCount = STAGES.filter((s) => valid[s.key]).length;
+  const citedIds = new Set((result?.citations || []).map((c) => c.provision_id));
+
+  return (
+    <>
+      <PageTitle
+        eyebrow="PIPELINE TRUY VẤN"
+        title="Câu hỏi đi qua những đâu"
+        copy="Chạy một câu hỏi thật và xem từng chặng sáng lên với số liệu đo được từ execution_trace. Đánh dấu chặng nào đã tự kiểm chứng để biết mình đã nắm chắc phần nào."
+      />
+
+      {error && <div className="pipeError">{error}</div>}
+
+      <div className="pipeRun">
+        <div className="pipeRunTop">
+          <Search size={17} color="#567066" />
+          <input
+            id="pipe-question"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !loading && token) run();
+            }}
+            placeholder="Nhập câu hỏi pháp luật…"
+          />
+        </div>
+        <div className="pipeRunMeta">
+          <span>
+            <label htmlFor="pipe-domain">Lĩnh vực</label>
+            <select
+              id="pipe-domain"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+            >
+              {domains.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </span>
+          <span>
+            <label htmlFor="pipe-level">Mức pipeline</label>
+            <select
+              id="pipe-level"
+              value={level}
+              onChange={(e) => setLevel(e.target.value)}
+            >
+              {Object.entries(pipelineInfo).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {k} · {v}
+                </option>
+              ))}
+            </select>
+          </span>
+          <span>
+            <label htmlFor="pipe-date">Áp dụng ngày</label>
+            <select
+              id="pipe-date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            >
+              <option value="2026-01-01">2026-01-01 (hôm nay)</option>
+              <option value="2020-01-01">2020-01-01 (quá khứ)</option>
+            </select>
+          </span>
+          <span>
+            <button
+              className="pipeAsk"
+              onClick={() => run()}
+              disabled={loading || !token}
+            >
+              {loading ? <i className="spinner" /> : <Play />}
+              {loading ? "Đang chạy" : "Chạy pipeline"}
+            </button>
+          </span>
+        </div>
+        <div className="pipeChips">
+          <span>THỬ NGAY</span>
+          {PIPE_EXAMPLES.map(([dm, dt, q]) => (
+            <button
+              key={q + dt}
+              onClick={() => {
+                setDomain(dm);
+                setDate(dt);
+                setQuestion(q);
+              }}
+            >
+              {q.length > 42 ? `${q.slice(0, 42)}…` : q}
+              {dt === "2020-01-01" ? " · 2020" : ""}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="pipeWrap">
+        <div className="pipeStages">
+          {STAGES.map((s, i) => {
+            const st = stages[s.key];
+            const skipped = Boolean(result) && !st.ran;
+            const prev = i > 0 ? stages[STAGES[i - 1].key] : null;
+            return (
+              <React.Fragment key={s.key}>
+                {i > 0 && (
+                  <div
+                    className={`pipeLink ${prev?.ran && st.ran ? "flowed" : ""}`}
+                  />
+                )}
+                <article
+                  className="pipeStage"
+                  data-ran={st.ran ? "1" : "0"}
+                  data-skipped={skipped ? "1" : "0"}
+                  data-valid={valid[s.key] ? "1" : "0"}
+                >
+                  <div className="pipeHead">
+                    <span className="pipeNum">{i + 1}</span>
+                    <span className="pipeName">
+                      <strong>{s.name}</strong>
+                      <span>{s.sub}</span>
+                    </span>
+                    <span className="pipeSignal">
+                      {st.ran && st.count !== undefined && (
+                        <span className="pipeCount">{st.count} mục</span>
+                      )}
+                      {st.ran && st.count === undefined && (
+                        <span className="pipeCount">đã chạy</span>
+                      )}
+                      {skipped && (
+                        <span className="pipeSkipTag">
+                          {level} không dùng
+                        </span>
+                      )}
+                      <button
+                        className="pipeCheck"
+                        data-on={valid[s.key] ? "1" : "0"}
+                        onClick={() => toggle(s.key)}
+                        title="Đánh dấu đã tự kiểm chứng chặng này"
+                        aria-label={`Đánh dấu đã kiểm chứng: ${s.name}`}
+                      >
+                        <Check />
+                      </button>
+                    </span>
+                  </div>
+                  <div className="pipeBody">
+                    {st.ran && st.facts.length > 0 && (
+                      <div className="pipeFacts">
+                        {st.facts.map(([k, v], n) => (
+                          <span key={`${k}-${n}`}>
+                            {k} <b>{v}</b>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {s.key === "expansion" &&
+                      st.ran &&
+                      ((result?.diagnostics?.query_variants as string[]) || [])
+                        .length > 0 && (
+                        <div className="pipeVariants">
+                          {(
+                            (result?.diagnostics
+                              ?.query_variants as string[]) || []
+                          ).map((v, n) => (
+                            <code key={n}>{v}</code>
+                          ))}
+                        </div>
+                      )}
+                    <p className="pipeWhy">{s.why}</p>
+                    <span className="pipeTests">Kiểm chứng ở: {s.tests}</span>
+                  </div>
+                </article>
+              </React.Fragment>
+            );
+          })}
+
+          {result && result.retrieved_provisions.length > 0 && (
+            <>
+              <div className="sectionTitle">
+                <div>
+                  <BarChart3 size={14} /> Điểm số từng ứng viên qua các chặng
+                </div>
+                <span>{result.retrieved_provisions.length} ứng viên</span>
+              </div>
+              <div className="pipeTableWrap">
+                <table className="pipeTable">
+                  <thead>
+                    <tr>
+                      <th>Điều khoản</th>
+                      <th>Vector</th>
+                      <th>Từ khoá</th>
+                      <th>Hợp nhất</th>
+                      <th>Sau rerank</th>
+                      <th>Lý do khớp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.retrieved_provisions.map((r) => {
+                      const cited = citedIds.has(r.provision.id);
+                      return (
+                        <tr
+                          key={r.provision.id}
+                          className={cited ? "cited" : ""}
+                        >
+                          <td className="doc">
+                            Điều {r.provision.article}
+                            {cited && <span className="citedTag">trích dẫn</span>}
+                            <small>
+                              {r.provision.content.slice(0, 64)}
+                              {r.provision.content.length > 64 ? "…" : ""}
+                            </small>
+                          </td>
+                          <td className="n">{r.vector_score.toFixed(3)}</td>
+                          <td className="n">{r.keyword_score.toFixed(3)}</td>
+                          <td className="n">{r.fusion_score.toFixed(3)}</td>
+                          <td className="n">{r.rerank_score.toFixed(3)}</td>
+                          <td className="n">
+                            {r.match_reasons.slice(0, 2).join(" · ") || "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="pipeNote">
+                <ShieldCheck />
+                Dòng nền xanh là điều khoản được đưa vào trích dẫn. So cột Hợp
+                nhất với cột Sau rerank để thấy chính xác bước rerank đã đổi thứ
+                hạng như thế nào.
+              </p>
+            </>
+          )}
+        </div>
+
+        <aside className="pipeRail">
+          <h3>Bạn đã nắm chắc phần nào</h3>
+          <p>
+            Tự đánh dấu sau khi kiểm chứng chặng đó theo sổ kiểm thử. Lưu trong
+            trình duyệt này.
+          </p>
+          <div className="pipeMeter">
+            <span>Đã kiểm chứng</span>
+            <b>
+              {validCount}/{STAGES.length}
+            </b>
+          </div>
+          <div className="pipeBar">
+            <i style={{ width: `${(validCount / STAGES.length) * 100}%` }} />
+          </div>
+          <div className="pipeLegend">
+            <div>
+              <em className="on" />
+              <span>
+                Viền xanh trái: bạn đã tự kiểm chứng chặng này.
+              </span>
+            </div>
+            <div>
+              <em className="ran" />
+              <span>
+                Mũi tên vàng: dữ liệu thật vừa chảy qua, số liệu lấy từ
+                execution_trace của lần chạy.
+              </span>
+            </div>
+            <div>
+              <em className="skip" />
+              <span>
+                Chặng mờ: mức {level} không dùng tới. Đổi mức để thấy chặng nào
+                bật lên.
+              </span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
