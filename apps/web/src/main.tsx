@@ -105,6 +105,9 @@ type AdminDoc = {
   id: string;
   document_number: string;
   title: string;
+  document_type?: string;
+  issuing_authority?: string;
+  issued_date?: string;
   domain: string;
   status: string;
   review_status: string;
@@ -676,6 +679,7 @@ function AdminPanel({ token }: { token: string }) {
     [showForm, setShowForm] = useState(false),
     [message, setMessage] = useState(""),
     [preview, setPreview] = useState<Preview | null>(null),
+    [editing, setEditing] = useState<AdminDoc | null>(null),
     [job, setJob] = useState<Job | null>(null);
   const headers = { Authorization: `Bearer ${token}` };
   async function load() {
@@ -867,6 +871,18 @@ function AdminPanel({ token }: { token: string }) {
           </div>
         </div>
       )}
+      {editing && (
+        <MetadataForm
+          token={token}
+          doc={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(text) => {
+            setEditing(null);
+            setMessage(text);
+            load();
+          }}
+        />
+      )}
       <div className="dataTable">
         <div className="tableHead">
           <span>Văn bản</span>
@@ -893,6 +909,9 @@ function AdminPanel({ token }: { token: string }) {
             <span>
               <button className="tiny" onClick={() => inspect(d.id)}>
                 Preview
+              </button>
+              <button className="tiny" onClick={() => setEditing(d)}>
+                Sửa thông tin
               </button>
               {["draft", "review_ready"].includes(d.review_status) && (
                 <button className="tiny" onClick={() => publish(d.id)}>
@@ -1699,5 +1718,142 @@ function PipelinePanel({ token }: { token: string }) {
         </aside>
       </div>
     </>
+  );
+}
+
+function MetadataForm({
+  token,
+  doc,
+  onClose,
+  onSaved,
+}: {
+  token: string;
+  doc: AdminDoc;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const [number, setNumber] = useState(doc.document_number),
+    [title, setTitle] = useState(doc.title),
+    [docType, setDocType] = useState(doc.document_type ?? ""),
+    [authority, setAuthority] = useState(doc.issuing_authority ?? ""),
+    [issued, setIssued] = useState(doc.issued_date ?? ""),
+    [effective, setEffective] = useState(doc.effective_from ?? ""),
+    [domain, setDomain] = useState(doc.domain),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    // Send only what changed: the endpoint treats an unset field as "leave it alone".
+    const changes: Record<string, string> = {};
+    const pairs: [string, string, string | undefined][] = [
+      ["document_number", number, doc.document_number],
+      ["title", title, doc.title],
+      ["document_type", docType, doc.document_type],
+      ["issuing_authority", authority, doc.issuing_authority],
+      ["issued_date", issued, doc.issued_date],
+      ["effective_from", effective, doc.effective_from],
+      ["domain", domain, doc.domain],
+    ];
+    pairs.forEach(([key, next, before]) => {
+      if (next && next !== before) changes[key] = next;
+    });
+    if (!Object.keys(changes).length) {
+      setBusy(false);
+      onClose();
+      return;
+    }
+    let r: Response;
+    try {
+      r = await fetch(`${API}/api/v1/admin/documents/${doc.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(changes),
+      });
+    } catch {
+      setBusy(false);
+      setError("Không gọi được API.");
+      return;
+    }
+    const body = await r
+      .clone()
+      .json()
+      .catch(() => ({}) as Record<string, string>);
+    setBusy(false);
+    if (!r.ok) {
+      setError(body.detail || `Lưu thất bại (HTTP ${r.status})`);
+      return;
+    }
+    onSaved(
+      `Đã sửa ${Object.keys(changes).length} trường · cần rebuild index để truy vấn thấy thay đổi`,
+    );
+  }
+
+  return (
+    <form className="ingestForm metaForm" onSubmit={submit}>
+      <div>
+        <FileCheck2 />
+        <strong>Sửa thông tin văn bản</strong>
+      </div>
+      <label>
+        Số hiệu
+        <input value={number} onChange={(e) => setNumber(e.target.value)} />
+      </label>
+      <label>
+        Loại văn bản
+        <input value={docType} onChange={(e) => setDocType(e.target.value)} />
+      </label>
+      <label>
+        Tiêu đề
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      <label>
+        Cơ quan ban hành
+        <input
+          value={authority}
+          onChange={(e) => setAuthority(e.target.value)}
+        />
+      </label>
+      <label>
+        Ngày ban hành
+        <input
+          type="date"
+          value={issued}
+          onChange={(e) => setIssued(e.target.value)}
+        />
+      </label>
+      <label>
+        Ngày có hiệu lực
+        <input
+          type="date"
+          value={effective}
+          onChange={(e) => setEffective(e.target.value)}
+        />
+      </label>
+      <label>
+        Lĩnh vực
+        <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+          {domains.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && <p className="metaError">{error}</p>}
+      <div className="metaActions">
+        <button disabled={busy} className="primary standalone">
+          {busy ? "Đang lưu…" : "Lưu thay đổi"}
+        </button>
+        <button type="button" className="tiny" onClick={onClose}>
+          Huỷ
+        </button>
+      </div>
+    </form>
   );
 }
