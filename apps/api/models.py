@@ -128,6 +128,25 @@ class DocumentIngestRequest(BaseModel):
     publish: bool = False
 
 
+class DocumentMetadataUpdate(BaseModel):
+    """Corrections to a document's identity after ingestion.
+
+    Every field is optional: a PDF upload stamps metadata the uploader could not set,
+    and retrieval filters on exactly these fields, so they have to be correctable
+    without re-ingesting the file and losing its extraction.
+    """
+
+    document_number: str | None = Field(default=None, min_length=2, max_length=100)
+    title: str | None = Field(default=None, min_length=3, max_length=500)
+    document_type: str | None = Field(default=None, min_length=2, max_length=100)
+    issuing_authority: str | None = Field(default=None, min_length=2, max_length=200)
+    issued_date: date | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
+    domain: Domain | None = None
+    source_url: str | None = None
+
+
 class RelationRequest(BaseModel):
     source_document_id: UUID
     target_document_id: UUID

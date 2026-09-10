@@ -274,6 +274,29 @@ def save_document(document: LegalDocument, provisions: list[Provision], review_s
         session.commit()
 
 
+def update_document_metadata(document_id: UUID | str, changes: dict) -> LegalDocument | None:
+    """Rewrite a document's identity fields in place, keeping its provisions.
+
+    The extraction is expensive and unrelated to metadata, so a correction must not
+    force a re-ingest. document_number is mirrored onto its own column because that is
+    what the admin listing and the index search_text read.
+    """
+    if not changes:
+        return None
+    with Session(engine) as session:
+        row = session.get(DocumentRow, str(document_id))
+        if row is None:
+            return None
+        payload = dict(row.payload)
+        payload.update(changes)
+        document = LegalDocument.model_validate(payload)
+        row.payload = document.model_dump(mode="json")
+        if "document_number" in changes:
+            row.document_number = document.document_number
+        session.commit()
+        return document
+
+
 def load_published_corpus() -> tuple[list[LegalDocument], list[Provision]]:
     with Session(engine) as session:
         document_rows = session.scalars(

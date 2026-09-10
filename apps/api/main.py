@@ -36,6 +36,7 @@ from apps.api.database import (
     published_provision_payloads,
     recent_audits,
     save_document,
+    update_document_metadata,
     save_feedback,
     save_relation,
     save_run,
@@ -44,6 +45,7 @@ from apps.api.graph import graph_relations, graph_status, sync_graph
 from apps.api.models import (
     CompareRequest,
     DocumentIngestRequest,
+    DocumentMetadataUpdate,
     FeedbackRequest,
     LegalDocument,
     LoginRequest,
@@ -235,6 +237,34 @@ def ingest_document(body: DocumentIngestRequest, user: dict = Depends(current_us
         global RETRIEVER
         RETRIEVER = Retriever(DOCUMENTS, PROVISIONS)
     return {"document": document, "provisions": provisions, "published": body.publish}
+
+
+@app.patch("/api/v1/admin/documents/{document_id}")
+def correct_document_metadata(document_id: UUID, body: DocumentMetadataUpdate,
+                              user: dict = Depends(current_user)):
+    """Correct the identity of an already-ingested document.
+
+    A PDF upload stamps metadata the uploader never saw, and retrieval filters on those
+    fields — a wrong effective_from hides the document from every search made for a
+    date before it. Re-ingesting to fix a date would throw away the extraction, so the
+    metadata is editable on its own.
+    """
+    require_role(user, "admin", "curator")
+    changes = body.model_dump(mode="json", exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "No metadata fields supplied")
+    if "document_number" in changes and any(
+        d.document_number == changes["document_number"] and d.id != document_id for d in DOCUMENTS
+    ):
+        raise HTTPException(409, "Document number already exists")
+    document = update_document_metadata(document_id, changes)
+    if document is None:
+        raise HTTPException(404, "Document not found")
+    reload_corpus()
+    graph_synced = refresh_graph()
+    audit(user["sub"], "document.metadata", str(document_id), fields=sorted(changes))
+    return {"document": document, "graph_synced": graph_synced,
+            "reindex_required": True, "fields": sorted(changes)}
 
 
 @app.post("/api/v1/admin/documents/uploads", status_code=202)
