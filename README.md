@@ -25,15 +25,19 @@ uvicorn apps.api.main:app --reload
 - JWT authentication and role claims (`admin`, `curator`, `evaluator`, `user`)
 - legal document/provision/relation/run/evaluation schema
 - Vietnamese legal structure parser (chapter/article/clause/point)
-- L1 dense-like TF-IDF cosine, L2 metadata/date filter, L3 BM25 + vector RRF, L4 deterministic reranker, L7 effective-date and replacement warnings
+- comparable RAG ladder: L0 negative control, L1 dense baseline, L2 metadata filtering,
+  L3 hybrid RRF, L4 legal reranking, L5 GraphRAG, L6 multi-query RAG and L7 adaptive RAG
 - grounded extractive answers with verified citations and abstention
-- query comparison, retrieval diagnostics, feedback and evaluation metrics
+- query comparison and per-run execution traces, including query variants, retrieval/graph paths,
+  citation metrics, retrieval hit-rate, MRR, abstention rate and latency
 - SQLAlchemy persistence for documents, provisions, users, runs, feedback and audit events
 - reviewed document ingestion (`draft` by default) and role-protected evaluation API
 - Argon2 password verification and database-backed identities
 - optional OpenAI Responses structured output and embeddings gateway with citation validation
 - React query/compare UI, source inspector and warning states
-- Docker Compose services for API, web, PostgreSQL/pgvector and Redis
+- Docker Compose services for API, web, PostgreSQL/pgvector, Neo4j and Redis
+- Neo4j knowledge-graph projection (`Document`/`Provision`, `CONTAINS`, `REPLACES`,
+  `AMENDS`, `SUPPLEMENTS`, `GUIDES`) with SQL fallback when graph is unavailable
 - asynchronous PDF ingestion for born-digital, scanned and hybrid files
 - page-level Tesseract `vie` OCR fallback with deskew/CLAHE preprocessing and per-page degradation instead of job failure
 - tone-mark charset gate that rejects recognition output whose Vietnamese dấu were dropped, and non-retryable classification for deterministic ingestion failures
@@ -45,7 +49,7 @@ uvicorn apps.api.main:app --reload
 
 ## Deliberate MVP limitations
 
-The bundled corpus is synthetic demonstration data, not legal advice. SQLite/CI uses deterministic sparse scoring; Docker production retrieval switches to the active pgvector index. A production corpus, calibrated confidence model and enterprise SSO still require external infrastructure and reviewed data. See [architecture](docs/architecture.md) and [security](docs/security.md).
+The bundled corpus is synthetic demonstration data, not legal advice. SQLite/CI uses deterministic sparse scoring; Docker production retrieval switches to the active pgvector index and projects published data into Neo4j. PostgreSQL remains the source of truth, so graph outages degrade to SQL relations without blocking queries or publication. A production corpus, calibrated confidence model and enterprise SSO still require external infrastructure and reviewed data. See [architecture](docs/architecture.md) and [security](docs/security.md).
 
 ## Optional OpenAI generation
 
