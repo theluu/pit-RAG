@@ -366,15 +366,17 @@ function App() {
                   <div className="actions">
                     <button
                       className="secondary"
-                      disabled={!token || loading}
+                      disabled={loading}
+                      title={token ? "" : "So sánh nhiều pipeline cần đăng nhập"}
                       onClick={() => (token ? run(true) : setShowLogin(true))}
                     >
                       <GitCompareArrows size={16} />
                       So sánh
+                      {!token && <Lock className="lockIcon" />}
                     </button>
                     <button
                       className="primary"
-                      disabled={!token || loading}
+                      disabled={loading}
                       onClick={() => run()}
                     >
                       {loading ? (
@@ -2115,7 +2117,7 @@ function LoginDialog({
     if (!r.ok || !body.access_token) {
       setError(
         r.status === 401
-          ? "Email hoặc mật khẩu không đúng."
+          ? "Tài khoản hoặc mật khẩu không đúng."
           : body.detail || `Đăng nhập thất bại (HTTP ${r.status})`,
       );
       return;
@@ -2139,11 +2141,16 @@ function LoginDialog({
           </div>
         </div>
         <label htmlFor="login-email">
-          Email
+          Tài khoản
+          {/* Not type="email": the demo account is "demo", and the browser would
+              refuse to submit a username that is not shaped like an address. */}
           <input
             id="login-email"
-            type="email"
+            type="text"
             autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required

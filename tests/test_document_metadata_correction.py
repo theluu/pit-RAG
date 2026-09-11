@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from apps.api.config import settings
 from apps.api.main import app
 
 
@@ -27,7 +28,7 @@ def client():
 @pytest.fixture
 def token(client):
     r = client.post("/api/v1/auth/login",
-                    json={"email": "demo@legalrag.vn", "password": "demo1234"})
+                    json={"email": settings.demo_username, "password": settings.demo_password})
     assert r.status_code == 200, r.text
     return r.json()["access_token"]
 

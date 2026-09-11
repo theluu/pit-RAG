@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from apps.api.config import settings
 from apps.api.main import app
 
 client = TestClient(app)
@@ -9,7 +10,7 @@ client = TestClient(app)
 
 def token():
     response = client.post(
-        "/api/v1/auth/login", json={"email": "demo@legalrag.vn", "password": "demo1234"}
+        "/api/v1/auth/login", json={"email": settings.demo_username, "password": settings.demo_password}
     )
     assert response.status_code == 200
     return response.json()["access_token"]
