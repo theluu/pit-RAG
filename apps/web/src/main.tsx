@@ -16,6 +16,9 @@ import {
   Play,
   Plus,
   Search,
+  Lock,
+  LogIn,
+  LogOut,
   Share2,
   ShieldCheck,
   Sparkles,
@@ -27,6 +30,7 @@ import "./styles.css";
 import "./ingestion.css";
 import "./graph.css";
 import "./pipeline.css";
+import "./mobile.css";
 
 // Default to same-origin relative paths: a production build served behind the app's
 // own reverse proxy must not carry a hardcoded host. Dev sets this in .env.development.
@@ -189,8 +193,18 @@ const pipelineInfo: Record<string, string> = {
   L7: "Adaptive RAG",
 };
 
+const TOKEN_KEY = "pitrag-token";
+
+function readToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 function App() {
-  const [token, setToken] = useState(""),
+  const [token, setToken] = useState(readToken),
     [view, setView] = useState<View>("query"),
     [question, setQuestion] = useState(examples[0][1]),
     [domain, setDomain] = useState("labor"),
@@ -200,16 +214,37 @@ function App() {
     [compare, setCompare] = useState<Record<string, Result> | null>(null),
     [loading, setLoading] = useState(false),
     [error, setError] = useState("");
-  useEffect(() => {
-    fetch(`${API}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "demo@legalrag.vn", password: "demo1234" }),
-    })
-      .then((r) => r.json())
-      .then((x) => setToken(x.access_token))
-      .catch(() => setError("Không thể kết nối API tại cổng 8000."));
-  }, []);
+  const [showLogin, setShowLogin] = useState(false);
+
+  // No credentials ship in this bundle. Searching needs no account at all; a token only
+  // appears here after someone signs in, and it is the API that enforces the boundary.
+  function signIn(next: string) {
+    try {
+      localStorage.setItem(TOKEN_KEY, next);
+    } catch {
+      /* private browsing: the session simply will not outlive the tab */
+    }
+    setToken(next);
+    setShowLogin(false);
+  }
+
+  function signOut() {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* nothing stored, nothing to clear */
+    }
+    setToken("");
+    setView("query");
+  }
+
+  function openProtected(next: View) {
+    if (next !== "query" && !token) {
+      setShowLogin(true);
+      return;
+    }
+    setView(next);
+  }
   async function run(comparing = false) {
     setLoading(true);
     setError("");
@@ -230,11 +265,15 @@ function App() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(body),
         },
       );
+      if (r.status === 401) {
+        signOut();
+        throw new Error("Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.");
+      }
       if (!r.ok) throw new Error("Truy vấn thất bại");
       const data = await r.json();
       comparing ? setCompare(data) : setResult(data);
@@ -246,9 +285,18 @@ function App() {
   }
   return (
     <div className="app">
-      <Header view={view} setView={setView} />
+      <Header
+        view={view}
+        setView={openProtected}
+        signedIn={Boolean(token)}
+        onSignIn={() => setShowLogin(true)}
+        onSignOut={signOut}
+      />
+      {showLogin && (
+        <LoginDialog onClose={() => setShowLogin(false)} onToken={signIn} />
+      )}
       <main>
-        <Sidebar view={view} setView={setView} />
+        <Sidebar view={view} setView={openProtected} signedIn={Boolean(token)} />
         <section className="workspace">
           {view === "query" && (
             <>
@@ -319,7 +367,7 @@ function App() {
                     <button
                       className="secondary"
                       disabled={!token || loading}
-                      onClick={() => run(true)}
+                      onClick={() => (token ? run(true) : setShowLogin(true))}
                     >
                       <GitCompareArrows size={16} />
                       So sánh
@@ -378,7 +426,19 @@ function App() {
     </div>
   );
 }
-function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
+function Header({
+  view,
+  setView,
+  signedIn,
+  onSignIn,
+  onSignOut,
+}: {
+  view: View;
+  setView: (v: View) => void;
+  signedIn: boolean;
+  onSignIn: () => void;
+  onSignOut: () => void;
+}) {
   return (
     <header>
       <div className="brand">
@@ -405,21 +465,35 @@ function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
             key={v}
           >
             {l}
+            {v !== "query" && !signedIn && <Lock className="lockIcon" />}
           </button>
         ))}
       </nav>
-      <span className="version">
-        <Share2 /> PGVECTOR + NEO4J · v0.4
-      </span>
+      <div className="headerRight">
+        <span className="version">
+          <Share2 /> PGVECTOR + NEO4J · v0.4
+        </span>
+        {signedIn ? (
+          <button className="authBtn out" onClick={onSignOut}>
+            <LogOut /> Đăng xuất
+          </button>
+        ) : (
+          <button className="authBtn" onClick={onSignIn}>
+            <LogIn /> Đăng nhập
+          </button>
+        )}
+      </div>
     </header>
   );
 }
 function Sidebar({
   view,
   setView,
+  signedIn,
 }: {
   view: View;
   setView: (v: View) => void;
+  signedIn: boolean;
 }) {
   return (
     <aside>
@@ -438,6 +512,7 @@ function Sidebar({
         >
           <Activity />
           <span>Pipeline truy vấn</span>
+          {!signedIn && <Lock className="lockIcon" />}
         </button>
         <button
           className={`nav ${view === "admin" ? "active" : ""}`}
@@ -445,6 +520,7 @@ function Sidebar({
         >
           <Database />
           <span>Quản trị dữ liệu</span>
+          {!signedIn && <Lock className="lockIcon" />}
         </button>
         <button
           className={`nav ${view === "evaluation" ? "active" : ""}`}
@@ -452,6 +528,7 @@ function Sidebar({
         >
           <BarChart3 />
           <span>Evaluation Lab</span>
+          {!signedIn && <Lock className="lockIcon" />}
         </button>
       </div>
       <div>
@@ -1994,6 +2071,105 @@ function QualityStat({
     <div className={`qualityStat ${bad ? "bad" : ""}`}>
       <span>{label}</span>
       <b>{value}</b>
+    </div>
+  );
+}
+
+
+// The sign-in surface. Nothing here is pre-filled: the previous build shipped the demo
+// account's password as a literal in the bundle, which handed every visitor the admin
+// role. Credentials now travel only from this form to the login endpoint.
+function LoginDialog({
+  onClose,
+  onToken,
+}: {
+  onClose: () => void;
+  onToken: (token: string) => void;
+}) {
+  const [email, setEmail] = useState(""),
+    [password, setPassword] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    let r: Response;
+    try {
+      r = await fetch(`${API}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      setBusy(false);
+      setError("Không gọi được API. Kiểm tra kết nối mạng.");
+      return;
+    }
+    const body = await r
+      .clone()
+      .json()
+      .catch(() => ({}) as Record<string, string>);
+    setBusy(false);
+    if (!r.ok || !body.access_token) {
+      setError(
+        r.status === 401
+          ? "Email hoặc mật khẩu không đúng."
+          : body.detail || `Đăng nhập thất bại (HTTP ${r.status})`,
+      );
+      return;
+    }
+    onToken(body.access_token as string);
+  }
+
+  return (
+    <div
+      className="loginOverlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <form className="loginCard" onSubmit={submit}>
+        <div className="loginHead">
+          <ShieldCheck />
+          <div>
+            <strong>Đăng nhập</strong>
+            <span>Tra cứu thì mở cho mọi người. Quản trị dữ liệu, pipeline và đánh giá cần tài khoản.</span>
+          </div>
+        </div>
+        <label htmlFor="login-email">
+          Email
+          <input
+            id="login-email"
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+        <label htmlFor="login-password">
+          Mật khẩu
+          <input
+            id="login-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </label>
+        {error && <p className="loginError">{error}</p>}
+        <div className="loginActions">
+          <button className="primary standalone" disabled={busy}>
+            {busy ? "Đang kiểm tra…" : "Đăng nhập"}
+          </button>
+          <button type="button" className="tiny" onClick={onClose}>
+            Để sau
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

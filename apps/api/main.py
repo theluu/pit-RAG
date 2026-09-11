@@ -131,6 +131,26 @@ def require_role(user: dict, *roles: str) -> None:
         raise HTTPException(403, "Insufficient role")
 
 
+# Searching is open to anyone; only writes, multi-pipeline runs and provider
+# configuration sit behind a login. A visitor carrying an expired or malformed token —
+# a stale value left in localStorage — is treated as a visitor rather than rejected,
+# because failing their search would punish them for a detail they cannot see.
+ANONYMOUS_USER = "anonymous"
+
+
+def optional_user(authorization: str | None = Header(default=None)) -> dict | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return jwt.decode(authorization[7:], settings.secret_key, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+
+
+def actor(user: dict | None) -> str:
+    return user["sub"] if user else ANONYMOUS_USER
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "documents": len(DOCUMENTS), "provisions": len(PROVISIONS),
@@ -191,12 +211,12 @@ def login(body: LoginRequest):
 
 
 @app.get("/api/v1/documents")
-def documents(_: dict = Depends(current_user)):
+def documents(_: dict | None = Depends(optional_user)):
     return DOCUMENTS
 
 
 @app.get("/api/v1/documents/{document_id}")
-def document(document_id: UUID, _: dict = Depends(current_user)):
+def document(document_id: UUID, _: dict | None = Depends(optional_user)):
     if document_id not in DOC_MAP:
         raise HTTPException(404, "Document not found")
     return {
@@ -476,7 +496,7 @@ def audit_log(user: dict = Depends(current_user)):
 
 
 @app.get("/api/v1/relations")
-def relations(_: dict = Depends(current_user)):
+def relations(_: dict | None = Depends(optional_user)):
     return list_relations()
 
 
@@ -573,8 +593,8 @@ def execute(body: QueryRequest, user_id: str = "system", use_provider: bool = Tr
 
 
 @app.post("/api/v1/query", response_model=QueryResponse)
-def query(body: QueryRequest, user: dict = Depends(current_user)):
-    return execute(body, user["sub"])
+def query(body: QueryRequest, user: dict | None = Depends(optional_user)):
+    return execute(body, actor(user))
 
 
 @app.post("/api/v1/query/compare")
@@ -594,7 +614,7 @@ def compare(body: CompareRequest, user: dict = Depends(current_user)):
 
 
 @app.get("/api/v1/runs/{run_id}", response_model=QueryResponse)
-def run(run_id: UUID, _: dict = Depends(current_user)):
+def run(run_id: UUID, _: dict | None = Depends(optional_user)):
     stored = RUNS.get(run_id) or get_run(run_id)
     if stored is None:
         raise HTTPException(404, "Run not found")
@@ -602,13 +622,15 @@ def run(run_id: UUID, _: dict = Depends(current_user)):
 
 
 @app.post("/api/v1/runs/{run_id}/feedback", status_code=201)
-def feedback(run_id: UUID, body: FeedbackRequest, user: dict = Depends(current_user)):
+def feedback(run_id: UUID, body: FeedbackRequest,
+             user: dict | None = Depends(optional_user)):
     if run_id not in RUNS and get_run(run_id) is None:
         raise HTTPException(404, "Run not found")
+    who = actor(user)
     FEEDBACK[run_id].append(
-        {**body.model_dump(), "user_id": user["sub"], "created_at": datetime.now(UTC).isoformat()}
+        {**body.model_dump(), "user_id": who, "created_at": datetime.now(UTC).isoformat()}
     )
-    save_feedback(run_id, user["sub"], body.rating, body.comment)
+    save_feedback(run_id, who, body.rating, body.comment)
     return {"status": "recorded"}
 
 
