@@ -172,7 +172,9 @@
   }
 
   .brand { flex: 1 1 auto; min-width: 0; }
+  .brand > div:last-child { min-width: 0; }
   .brand strong { font-size: 15px; }
+  .brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .headerRight { flex: 0 0 auto; }
   .version { display: none; }
 
@@ -181,12 +183,17 @@
   .hero h1 { font-size: 28px; line-height: 1.12; }
   .heroCopy { font-size: 12.5px; }
 
-  /* Query box: one control per row, full-width action. */
-  .controls { flex-wrap: wrap; gap: 10px; padding: 12px; }
-  .controls > label,
-  .controls > span { flex: 1 1 130px; min-width: 0; }
+  /* Query box: controls wrap, action row full width.
+     A flex item defaults to min-width:auto, so a <select> refuses to shrink below its
+     longest option ("L7 · Adaptive RAG") and pushes the row past the screen. min-width:0
+     is what actually lets these wrap. */
+  .controls { flex-wrap: wrap; gap: 10px; padding: 12px; align-items: stretch; }
+  .controls > * { min-width: 0; }
+  .controls > label { flex: 1 1 140px; }
+  .controls label { white-space: normal; }
   .controls input,
-  .controls select { max-width: 100%; width: 100%; font-size: 15px; }
+  .controls select { max-width: 100%; width: 100%; font-size: 15px; min-width: 0; }
+  .controls .actions { flex: 1 1 100%; margin-left: 0; }
   .queryTop { padding: 16px 15px 10px; }
   .queryTop textarea { height: 84px; font-size: 15px; }
   .actions button { min-height: 44px; }
@@ -235,4 +242,28 @@
   html, body { max-width: 100%; overflow-x: hidden; }
   .dataTable, .previewPanel, .querybox, .result { max-width: 100%; }
   pre, table { max-width: 100%; }
+}
+
+/* Flex and grid children only shrink once min-width:auto is released. Anything that can
+   hold a long unbroken string — a select, a citation, a mono span — needs it explicitly. */
+@media (max-width: 760px) {
+  .workspace,
+  .querybox,
+  .result,
+  .resultHead,
+  .resultHead > div,
+  .source,
+  .sourceTop,
+  .sourceMeta,
+  .metric,
+  .signalList > div,
+  .tableRow,
+  .tableRow > span,
+  .evalCard { min-width: 0; }
+
+  .sourceTop { flex-wrap: wrap; gap: 5px; }
+  .sourceMeta { flex-wrap: wrap; }
+  .sourceMeta span { flex: 1 1 100%; }
+  .source p { overflow-wrap: anywhere; }
+  .metric b { overflow-wrap: anywhere; }
 }
