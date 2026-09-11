@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     clamav_host: str = "localhost"
     clamav_port: int = 3310
     malware_scan_required: bool = False
+    # The demo account, kept in configuration so a deployment can change it without a
+    # code change. The previous pair was a literal in the source, which is how it
+    # reached the browser bundle and handed every visitor the admin role.
+    demo_username: str = "demo"
+    demo_password: str = "demo"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

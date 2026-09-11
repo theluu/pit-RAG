@@ -190,9 +190,15 @@ def init_database(documents: list[LegalDocument], provisions: list[Provision]) -
             for statement in vector_ddl():
                 connection.exec_driver_sql(statement)
     with Session(engine) as session:
-        if not session.scalar(select(UserRow).where(UserRow.email == "demo@legalrag.vn")):
-            session.add(UserRow(id="demo-user", email="demo@legalrag.vn",
-                                password_hash=password_hasher.hash("demo1234"), role="admin"))
+        # Upsert rather than create-if-missing: a demo account whose credentials have
+        # drifted from the configured ones is a demo nobody can sign into, and the row
+        # outlives any code change that renames it.
+        demo = session.get(UserRow, "demo-user")
+        if demo is None:
+            demo = UserRow(id="demo-user", role="admin")
+            session.add(demo)
+        demo.email = settings.demo_username
+        demo.password_hash = password_hasher.hash(settings.demo_password)
         for document in documents:
             if not session.get(DocumentRow, str(document.id)):
                 session.add(DocumentRow(id=str(document.id), document_number=document.document_number,

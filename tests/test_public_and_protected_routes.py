@@ -16,6 +16,7 @@ The split drawn here:
 import pytest
 from fastapi.testclient import TestClient
 
+from apps.api.config import settings
 from apps.api.main import app
 
 PUBLIC_READS = [
@@ -43,7 +44,7 @@ def client():
 @pytest.fixture
 def auth(client):
     r = client.post("/api/v1/auth/login",
-                    json={"email": "demo@legalrag.vn", "password": "demo1234"})
+                    json={"email": settings.demo_username, "password": settings.demo_password})
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
